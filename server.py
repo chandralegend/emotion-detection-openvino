@@ -4,7 +4,7 @@ import time
 import io
 import logging
 import base64
-from tkinter import Image
+from PIL import Image
 import dotenv
 import argparse
 from flask import Flask, request, jsonify
@@ -18,7 +18,7 @@ app = Flask(__name__)
 app_swagger = Api(app, version='1.0-alpha', title='Emotion Recognizer API')
 namespace = app_swagger.namespace('', description='promiseQ AI')
 
-is_prod = secrets["SERVER_ENV"] == "PRODUCTION"
+is_production = secrets["SERVER_ENV"] == "PRODUCTION"
 
 
 @namespace.route('/emotion/base64', methods=["POST"])
@@ -37,14 +37,14 @@ class EmotionDetectionBase64(Resource):
             image = self.pure_pil_alpha_to_color_v2(image)
             '''using current time to makesure that model wont be
             using a previous saved image'''
-            img_path = "temp_{}.png".format(time.time())
+            img_path = "temp/temp_{}.png".format(time.time())
             image.save(img_path)
             # predicting the emotion
             output = emotion_recognizer.predict(img_path)
             os.remove(img_path)
         except Exception as e:
             logger.error(e)
-            if not is_prod:
+            if not is_production:
                 return jsonify({"error": str(e)})
         return jsonify({"emotion": labels[output]})
 
@@ -54,6 +54,12 @@ class EmotionDetectionBase64(Resource):
         background = Image.new('RGB', image.size, color)
         background.paste(image, mask=image.split()[3])
         return background
+
+
+@namespace.route('/emotion', methods=["POST"])
+class EmotionDetection(Resource):
+    # TODO: Handle Multipart Data (Find a way)
+    None
 
 
 if __name__ == "__main__":
@@ -68,8 +74,10 @@ if __name__ == "__main__":
                            action='store_true', help='enable debug mode')
     args = argparser.parse_args()
 
+    # Label mappings
     labels = ["Neutral", "Happy", "Sad", "Surprise", "Anger"]
-    os.makedirs('/temp', exist_ok=True)
+
+    os.makedirs('temp', exist_ok=True)
 
     try:
         from emotion_recognizer.model import EmotionRecognizer
@@ -77,8 +85,8 @@ if __name__ == "__main__":
         if not(os.path.isfile(args.xml) and os.path.isfile(args.bin)):
             raise FileNotFoundError
         emotion_recognizer = EmotionRecognizer(
-            model_xml=args.xml, model_bin=args.bin)
-        logger.critical("Emotion Recognizer loaded Successfully")
+            model_xml=args.xml, weights_bin=args.bin)
+        logger.info("Emotion Recognizer loaded Successfully")
     except ImportError:
         logger.critical("Emotion Recognizer not found.")
         sys.exit(1)
@@ -86,7 +94,7 @@ if __name__ == "__main__":
         logger.critical("Error loading Emotion Recognizer: {}".format(e))
         sys.exit(1)
 
-    if is_prod:
+    if is_production:
         app_swagger.init_app(app)
         app.run(host='0.0.0.0', port=args.port, debug=args.debug)
     else:
