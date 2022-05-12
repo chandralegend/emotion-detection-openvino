@@ -38,3 +38,4 @@ You can change the served port by using the `--port 3000` argument after _server
 - [ ] Docker Integration
 - [ ] Elastic APM to Track the Performance
 - [ ] Better Emotion Detection Model (This model is shit.)
+- [ ] Fix Not working on Heroku
