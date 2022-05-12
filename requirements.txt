@@ -2,7 +2,7 @@ Flask
 flask-restx
 numpy
 opencv-python
-openvino
+openvino==2022.1.0
 Pillow
 PyYAML
 python-dotenv
