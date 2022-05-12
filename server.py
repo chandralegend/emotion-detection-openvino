@@ -1,14 +1,12 @@
 import os
-import sys
 import time
 import yaml
 import dotenv
 import argparse
 from flask import Flask, request, jsonify
 from flask_restx import Api, Resource, fields, reqparse
-from werkzeug.utils import secure_filename
 from werkzeug.datastructures import FileStorage
-from utils import decodebase64
+from utils import decodebase64, load_model
 
 app = Flask(__name__)
 api = Api(app, version='1.0-alpha', title='Emotion Recognizer API',
@@ -21,7 +19,19 @@ upload_parser.add_argument('imgfile', type=FileStorage,
 
 secrets = dotenv.dotenv_values('.env')
 is_production = secrets["SERVER_ENV"] == "PRODUCTION"
-print("Production:", is_production)
+print("Running on Production: {}".format(is_production))
+
+'''
+Gunicorn doesnt run on __main__, so we need to initialize the inference here
+'''
+if is_production:
+    with open('default.config.yaml', 'r') as stream:
+        config = yaml.safe_load(stream)
+    labels = config['labels']
+    os.makedirs('temp', exist_ok=True)
+
+    emotion_recognizer = load_model(
+        namespace.logger, config['model_xml'], config['weights_bin'])
 
 
 @api.route('/emotion/base64', methods=["POST"], endpoint="base64")
@@ -67,48 +77,30 @@ class EmotionDetection(Resource):
         try:
             uploads["imgfile"].save(img_path)
             output = emotion_recognizer.predict(img_path)
-            # os.remove(img_path)
+            os.remove(img_path)
         except Exception as e:
             namespace.logger.error(e)
             return jsonify({"error": str(e)}, 400)
         return jsonify({"emotion": labels[output]})
 
 
-if __name__ == "__main__":
+if (__name__ == "__main__") & (not is_production):
+    '''Following Lines run only in development'''
     argparser = argparse.ArgumentParser()
     argparser.add_argument('-p', '--port', default=5000,
                            type=int, help='port to listen on')
     argparser.add_argument(
         '--config', default="default.config.yaml", type=str, help='path to config file')
-    argparser.add_argument('-d', '--debug', default=False,
+    argparser.add_argument('-d', '--debug', default=True,
                            action='store_true', help='enable debug mode')
     args = argparser.parse_args()
 
-    with open('default.config.yaml', 'r') as stream:
+    with open(args.config, 'r') as stream:
         config = yaml.safe_load(stream)
-
-    # Label mappings
-    labels = config['labels']
-
+    labels = config['labels']  # Label mappings
     os.makedirs('temp', exist_ok=True)
 
-    try:
-        from emotion_recognizer.model import EmotionRecognizer
-        # check if the xml and bin files are present
-        if not(os.path.isfile(config['model_xml']) and os.path.isfile(config['weights_bin'])):
-            raise FileNotFoundError
-        emotion_recognizer = EmotionRecognizer(
-            model_xml=config['model_xml'], weights_bin=config['weights_bin'])
-        namespace.logger.info("Emotion Recognizer loaded Successfully")
-    except ImportError:
-        namespace.logger.critical("Emotion Recognizer not found.")
-        sys.exit(1)
-    except Exception as e:
-        namespace.logger.critical(
-            "Error loading Emotion Recognizer: {}".format(e))
-        sys.exit(1)
+    emotion_recognizer = load_model(
+        namespace.logger, config['model_xml'], config['weights_bin'])
 
-    if is_production:
-        app.run(host='0.0.0.0', port=args.port, debug=args.debug)
-    else:
-        app.run(port=args.port, debug=True)
+    app.run(port=args.port, debug=args.debug)
