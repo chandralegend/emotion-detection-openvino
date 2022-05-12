@@ -8,8 +8,8 @@ class EmotionRecognizer:
     TODO: add DocString
     '''
 
-    def __init__(self, device: str = "CPU", model_xml: str = "model/FP32/emotions-recognition-retail-0003.xml",
-                 weights_bin: str = "model/FP32/emotions-recognition-retail-0003.bin", verbose: bool = False):
+    def __init__(self, device: str = "CPU", model_xml: str = "openvino/FP32/emotions-recognition-retail-0003.xml",
+                 weights_bin: str = "openvino/FP32/emotions-recognition-retail-0003.bin", verbose: bool = False):
         self.verbose = verbose
 
         # Initialize the Inference Engine and loadin the Model and Weights
