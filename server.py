@@ -67,7 +67,7 @@ class EmotionDetection(Resource):
         try:
             uploads["imgfile"].save(img_path)
             output = emotion_recognizer.predict(img_path)
-            os.remove(img_path)
+            # os.remove(img_path)
         except Exception as e:
             namespace.logger.error(e)
             return jsonify({"error": str(e)}, 400)
