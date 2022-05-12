@@ -1,0 +1,6 @@
+# openvino model files
+model_xml: "emotion_recognizer/model/FP32/emotions-recognition-retail-0003.xml"
+weights_bin: "emotion_recognizer/model/FP32/emotions-recognition-retail-0003.bin"
+
+#labels
+labels: ["Neutral", "Happy", "Sad", "Surprise", "Anger"]

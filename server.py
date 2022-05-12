@@ -1,65 +1,77 @@
 import os
 import sys
 import time
-import io
-import logging
-import base64
-from PIL import Image
+import yaml
 import dotenv
 import argparse
 from flask import Flask, request, jsonify
-from flask_restx import Api, Resource, fields
-
-secrets = dotenv.dotenv_values('.env')
-logger = logging.getLogger(__name__)
+from flask_restx import Api, Resource, fields, reqparse
+from werkzeug.utils import secure_filename
+from werkzeug.datastructures import FileStorage
+from utils import decodebase64
 
 app = Flask(__name__)
+api = Api(app, version='1.0-alpha', title='Emotion Recognizer API',
+          description="Recognize Emotion of a given image.", default="Endpoints", default_label='Emotion Recognizer')
+namespace = api.namespace('emotion', description='Emotion Recognizer')
 
-app_swagger = Api(app, version='1.0-alpha', title='Emotion Recognizer API')
-namespace = app_swagger.namespace('', description='promiseQ AI')
+upload_parser = reqparse.RequestParser()
+upload_parser.add_argument('imgfile', type=FileStorage,
+                           location='files', required=True)
 
+secrets = dotenv.dotenv_values('.env')
 is_production = secrets["SERVER_ENV"] == "PRODUCTION"
+print("Production:", is_production)
 
 
-@namespace.route('/emotion/base64', methods=["POST"])
+@api.route('/emotion/base64', methods=["POST"], endpoint="base64")
+@api.doc(responses={
+    200: 'Successful Emotion Detection',
+    400: 'Bad request',
+    500: 'Internal server error.'},
+    description="Detect Emotion of an Image in Base64 format")
 class EmotionDetectionBase64(Resource):
-    base64_request = app_swagger.model("Base64 Emotion Detection Endpoint", {
+    base64_request = api.model("Base64 Emotion Detection Endpoint", {
         "img": fields.String(required=True, description="Base64 encoded image")
     })
 
-    @app_swagger.expect(base64_request)
+    @api.expect(base64_request)
     def post(self):
         image = request.json["img"]
         try:
             # decoding the base64 image and saving
-            image = base64.b64decode(image)
-            image = Image.open(io.BytesIO(image)).convert('RGBA')
-            image = self.pure_pil_alpha_to_color_v2(image)
-            '''using current time to makesure that model wont be
-            using a previous saved image'''
+            image = decodebase64(image)
             img_path = "temp/temp_{}.png".format(time.time())
             image.save(img_path)
             # predicting the emotion
             output = emotion_recognizer.predict(img_path)
             os.remove(img_path)
         except Exception as e:
-            logger.error(e)
-            if not is_production:
-                return jsonify({"error": str(e)})
+            namespace.logger.error(e)
+            return jsonify({"error": str(e)}, 400)
         return jsonify({"emotion": labels[output]})
 
-    @staticmethod
-    def pure_pil_alpha_to_color_v2(image, color=(255, 255, 255)):
-        image.load()
-        background = Image.new('RGB', image.size, color)
-        background.paste(image, mask=image.split()[3])
-        return background
 
-
-@namespace.route('/emotion', methods=["POST"])
+@api.route('/emotion', methods=["POST"])
+@api.doc(responses={
+    200: 'Successful Emotion Detection',
+    400: 'Bad request',
+    500: 'Internal server error.'},
+    description="Detect Emotion of an Uploaded Image")
 class EmotionDetection(Resource):
-    # TODO: Handle Multipart Data (Find a way)
-    None
+
+    @api.expect(upload_parser)
+    def post(self):
+        uploads = upload_parser.parse_args()
+        img_path = "temp/temp_{}.png".format(time.time())
+        try:
+            uploads["imgfile"].save(img_path)
+            output = emotion_recognizer.predict(img_path)
+            os.remove(img_path)
+        except Exception as e:
+            namespace.logger.error(e)
+            return jsonify({"error": str(e)}, 400)
+        return jsonify({"emotion": labels[output]})
 
 
 if __name__ == "__main__":
@@ -67,35 +79,36 @@ if __name__ == "__main__":
     argparser.add_argument('-p', '--port', default=5000,
                            type=int, help='port to listen on')
     argparser.add_argument(
-        '--xml', default="emotion_recognizer/model/FP32/emotions-recognition-retail-0003.xml", type=str, help='path to model xml')
-    argparser.add_argument(
-        '--bin', default="emotion_recognizer/model/FP32/emotions-recognition-retail-0003.bin", type=str, help='path to model bin')
+        '--config', default="default.config.yaml", type=str, help='path to config file')
     argparser.add_argument('-d', '--debug', default=False,
                            action='store_true', help='enable debug mode')
     args = argparser.parse_args()
 
+    with open('default.config.yaml', 'r') as stream:
+        config = yaml.safe_load(stream)
+
     # Label mappings
-    labels = ["Neutral", "Happy", "Sad", "Surprise", "Anger"]
+    labels = config['labels']
 
     os.makedirs('temp', exist_ok=True)
 
     try:
         from emotion_recognizer.model import EmotionRecognizer
         # check if the xml and bin files are present
-        if not(os.path.isfile(args.xml) and os.path.isfile(args.bin)):
+        if not(os.path.isfile(config['model_xml']) and os.path.isfile(config['weights_bin'])):
             raise FileNotFoundError
         emotion_recognizer = EmotionRecognizer(
-            model_xml=args.xml, weights_bin=args.bin)
-        logger.info("Emotion Recognizer loaded Successfully")
+            model_xml=config['model_xml'], weights_bin=config['weights_bin'])
+        namespace.logger.info("Emotion Recognizer loaded Successfully")
     except ImportError:
-        logger.critical("Emotion Recognizer not found.")
+        namespace.logger.critical("Emotion Recognizer not found.")
         sys.exit(1)
     except Exception as e:
-        logger.critical("Error loading Emotion Recognizer: {}".format(e))
+        namespace.logger.critical(
+            "Error loading Emotion Recognizer: {}".format(e))
         sys.exit(1)
 
     if is_production:
-        app_swagger.init_app(app)
         app.run(host='0.0.0.0', port=args.port, debug=args.debug)
     else:
-        app.run(host='localhost', port=args.port, debug=args.debug)
+        app.run(port=args.port, debug=True)
