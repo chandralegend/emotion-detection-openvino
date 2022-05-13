@@ -1,13 +1,11 @@
-FROM 
+FROM 3.8.13-bullseye
 
 COPY ./requirements.txt ./requirements.txt
 
-RUN pip install -r ./requirements.txt 
+RUN pip install -r ./requirements.txt
 
-RUN apt-get update
-
-EXPOSE 5000 
+EXPOSE 8000 
 
 COPY . . 
 
-CMD []
+CMD ["gunicorn", "server:app", "-w", "4", "-p", "8000"]
