@@ -19,7 +19,7 @@ You can change the served port by using the `--port 3000` argument after _server
 
 1. Clone the Repository
 2. Install the Dependancies using `pip install -r requirements.txt`
-3. Open `.env` file and set SERVER_ENV to DEVELOPMENT
+3. Open `.env` file and set SERVER_ENV to PRODUCTION
 4. Run the server using `gunicorn w -4 server:app`
 
 ## Endpoints
@@ -35,7 +35,7 @@ You can change the served port by using the `--port 3000` argument after _server
 
 ## Todos
 
-- [ ] Docker Integration
+- [X] Docker Integration
 - [ ] Elastic APM to Track the Performance
 - [ ] Better Emotion Detection Model (This model is shit.)
 - [ ] Fix Not working on Heroku
